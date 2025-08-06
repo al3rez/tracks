@@ -1,0 +1,22 @@
+{
+    "name": "tracks/framework",
+    "description": "A Ruby on Rails-like PHP framework",
+    "type": "project",
+    "require": {
+        "php": ">=8.0",
+        "vlucas/phpdotenv": "^5.5",
+        "symfony/console": "^6.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Tracks\\": "lib/tracks/",
+            "App\\": "app/"
+        },
+        "files": [
+            "lib/tracks/helpers.php"
+        ]
+    },
+    "scripts": {
+        "tracks": "php tracks"
+    }
+}

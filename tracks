@@ -1,0 +1,294 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputArgument;
+use Symfony\Component\Console\Input\InputOption;
+use Symfony\Component\Console\Output\OutputInterface;
+use Tracks\ActiveRecord\Migrator;
+use Tracks\Generators\ControllerGenerator;
+use Tracks\Generators\ModelGenerator;
+use Tracks\Generators\ScaffoldGenerator;
+use Tracks\Generators\AppGenerator;
+
+$app = new Application('Tracks Framework', '1.0.0');
+
+class ServerCommand extends Command
+{
+    protected static $defaultName = 'server';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Start the development server')
+             ->addOption('port', 'p', InputOption::VALUE_OPTIONAL, 'Port to run on', 3000)
+             ->addOption('host', null, InputOption::VALUE_OPTIONAL, 'Host to bind to', 'localhost');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $port = $input->getOption('port');
+        $host = $input->getOption('host');
+        
+        $output->writeln("<info>Starting Tracks server on http://$host:$port</info>");
+        $output->writeln("Press Ctrl-C to stop the server");
+        
+        $command = "php -S $host:$port -t public public/index.php";
+        passthru($command);
+        
+        return Command::SUCCESS;
+    }
+}
+
+class ConsoleCommand extends Command
+{
+    protected static $defaultName = 'console';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Start an interactive console session');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $output->writeln("<info>Starting Tracks console...</info>");
+        $output->writeln("Loading environment...");
+        
+        require_once __DIR__ . '/config/boot.php';
+        
+        $shellCode = <<<'PHP'
+require_once 'vendor/autoload.php';
+require_once 'config/boot.php';
+
+echo "Tracks Console (PHP " . PHP_VERSION . ")\n";
+echo "Type 'exit' to quit.\n\n";
+
+function reload() {
+    foreach (get_declared_classes() as $class) {
+        if (strpos($class, 'App\\') === 0) {
+            $file = str_replace('\\', '/', $class) . '.php';
+            $file = str_replace('App/', 'app/', $file);
+            if (file_exists($file)) {
+                require_once $file;
+            }
+        }
+    }
+    echo "Reloaded!\n";
+}
+PHP;
+        
+        file_put_contents('/tmp/tracks_console.php', $shellCode);
+        passthru('php -a -d auto_prepend_file=/tmp/tracks_console.php');
+        unlink('/tmp/tracks_console.php');
+        
+        return Command::SUCCESS;
+    }
+}
+
+class MigrateCommand extends Command
+{
+    protected static $defaultName = 'db:migrate';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Run pending database migrations');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $output->writeln("<info>Running migrations...</info>");
+        
+        $migrator = new Migrator();
+        $migrator->migrate();
+        
+        return Command::SUCCESS;
+    }
+}
+
+class RollbackCommand extends Command
+{
+    protected static $defaultName = 'db:rollback';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Rollback database migrations')
+             ->addOption('steps', null, InputOption::VALUE_OPTIONAL, 'Number of migrations to rollback', 1);
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $steps = (int) $input->getOption('steps');
+        $output->writeln("<info>Rolling back $steps migration(s)...</info>");
+        
+        $migrator = new Migrator();
+        $migrator->rollback($steps);
+        
+        return Command::SUCCESS;
+    }
+}
+
+class MigrationStatusCommand extends Command
+{
+    protected static $defaultName = 'db:status';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Show migration status');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $migrator = new Migrator();
+        $migrator->status();
+        
+        return Command::SUCCESS;
+    }
+}
+
+class GenerateControllerCommand extends Command
+{
+    protected static $defaultName = 'generate:controller';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Generate a new controller')
+             ->addArgument('name', InputArgument::REQUIRED, 'Controller name')
+             ->addOption('actions', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Actions to generate');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $name = $input->getArgument('name');
+        $actions = $input->getOption('actions') ?: ['index', 'show', 'new', 'create', 'edit', 'update', 'destroy'];
+        
+        $output->writeln("<info>Generating controller: $name</info>");
+        
+        $generator = new ControllerGenerator($name, ['actions' => $actions]);
+        $generator->generate();
+        
+        return Command::SUCCESS;
+    }
+}
+
+class GenerateModelCommand extends Command
+{
+    protected static $defaultName = 'generate:model';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Generate a new model')
+             ->addArgument('name', InputArgument::REQUIRED, 'Model name')
+             ->addOption('attributes', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Model attributes (name:type)');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $name = $input->getArgument('name');
+        $attributes = [];
+        
+        foreach ($input->getOption('attributes') as $attr) {
+            [$attrName, $attrType] = explode(':', $attr);
+            $attributes[$attrName] = $attrType;
+        }
+        
+        $output->writeln("<info>Generating model: $name</info>");
+        
+        $generator = new ModelGenerator($name, ['attributes' => $attributes]);
+        $generator->generate();
+        
+        return Command::SUCCESS;
+    }
+}
+
+class GenerateScaffoldCommand extends Command
+{
+    protected static $defaultName = 'generate:scaffold';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Generate a complete scaffold (model, controller, views)')
+             ->addArgument('name', InputArgument::REQUIRED, 'Resource name')
+             ->addOption('attributes', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Model attributes (name:type)');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $name = $input->getArgument('name');
+        $attributes = [];
+        
+        foreach ($input->getOption('attributes') as $attr) {
+            [$attrName, $attrType] = explode(':', $attr);
+            $attributes[$attrName] = $attrType;
+        }
+        
+        $output->writeln("<info>Generating scaffold: $name</info>");
+        
+        $generator = new ScaffoldGenerator($name, ['attributes' => $attributes]);
+        $generator->generate();
+        
+        return Command::SUCCESS;
+    }
+}
+
+class NewCommand extends Command
+{
+    protected static $defaultName = 'new';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Create a new Tracks application')
+             ->addArgument('name', InputArgument::REQUIRED, 'Application name');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $name = $input->getArgument('name');
+        
+        $output->writeln("<info>Creating new Tracks application: $name</info>");
+        
+        $generator = new AppGenerator($name);
+        $generator->generate();
+        
+        return Command::SUCCESS;
+    }
+}
+
+class RoutesCommand extends Command
+{
+    protected static $defaultName = 'routes';
+    
+    protected function configure(): void
+    {
+        $this->setDescription('Display all routes');
+    }
+    
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        require_once __DIR__ . '/config/boot.php';
+        
+        $app = \Tracks\Application::getInstance();
+        $router = $app->getRouter();
+        
+        $output->writeln("<info>Routes:</info>");
+        $output->writeln("Method  Path                    Controller#Action");
+        $output->writeln(str_repeat('-', 60));
+        
+        return Command::SUCCESS;
+    }
+}
+
+$app->add(new NewCommand());
+$app->add(new ServerCommand());
+$app->add(new ConsoleCommand());
+$app->add(new MigrateCommand());
+$app->add(new RollbackCommand());
+$app->add(new MigrationStatusCommand());
+$app->add(new GenerateControllerCommand());
+$app->add(new GenerateModelCommand());
+$app->add(new GenerateScaffoldCommand());
+$app->add(new RoutesCommand());
+
+$app->run();
