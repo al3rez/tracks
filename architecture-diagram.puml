@@ -1,0 +1,372 @@
+@startuml Tracks Framework Architecture
+
+!define ABSTRACT abstract
+!define STATIC static
+
+package "Core Framework" #LightBlue {
+  class Application <<Singleton>> {
+    -instance: Application
+    -router: Router
+    -config: array
+    -rootPath: string
+    -environment: string
+    --
+    -__construct()
+    +getInstance(): Application
+    +run(): void
+    -dispatch(route: array): void
+    -loadConfig(): void
+    -loadRoutes(): void
+    +getRouter(): Router
+    +getRootPath(): string
+    +getEnvironment(): string
+    +config(key: string, default): mixed
+  }
+}
+
+package "Routing" #LightGreen {
+  class Router {
+    -routes: array
+    -namespace: string
+    -currentScope: array
+    --
+    +get(path: string, controller: string, options: array): void
+    +post(path: string, controller: string, options: array): void
+    +put(path: string, controller: string, options: array): void
+    +patch(path: string, controller: string, options: array): void
+    +delete(path: string, controller: string, options: array): void
+    +resources(name: string, options: array): void
+    +resource(name: string, options: array): void
+    +namespace(namespace: string, callback: callable): void
+    +scope(path: string, callback: callable, options: array): void
+    +root(controller: string): void
+    -addRoute(method: string, path: string, controller: string, options: array): void
+    -convertPathToRegex(path: string): string
+    +match(method: string, path: string): array
+    +pathFor(name: string, params: array): string
+  }
+}
+
+package "MVC - Controllers" #LightYellow {
+  ABSTRACT class "ActionController::Base" {
+    #params: array
+    #variables: array
+    #layout: string
+    #rendered: bool
+    #currentAction: string
+    #headers: array
+    #statusCode: int
+    #redirectTo: string
+    #flash: array
+    #beforeActions: array
+    #afterActions: array
+    #skipBeforeActions: array
+    --
+    +__construct()
+    +setParams(params: array): void
+    +setCurrentAction(action: string): void
+    #beforeAction(method: string, options: array): void
+    #afterAction(method: string, options: array): void
+    #skipBeforeAction(method: string, options: array): void
+    +runFilters(action: string): void
+    -shouldRunFilter(filter: array, action: string): bool
+    -shouldSkipFilter(method: string, action: string): bool
+    +render(view: string, options: array): void
+    #renderJson(data: mixed): void
+    #renderText(text: string): void
+    #redirectTo(path: string, options: array): void
+    #redirectBack(options: array): void
+    -sendHeaders(): void
+    #set(name: string, value: mixed): void
+    +hasRendered(): bool
+    #params(): array
+    #param(key: string, default): mixed
+    #requireParams(key: string, permitted: array): array
+    -getControllerName(): string
+    -getActionName(): string
+    -getHelperMethods(): array
+  }
+
+  class PostsController {
+    +index(): void
+    +show(): void
+    +new(): void
+    +create(): void
+    +edit(): void
+    +update(): void
+    +destroy(): void
+  }
+
+  class CommentsController {
+    +create(): void
+    +destroy(): void
+  }
+
+  class HomeController {
+    +index(): void
+  }
+}
+
+package "MVC - Views" #Pink {
+  class "ActionView::Renderer" {
+    -viewsPath: string
+    -layoutsPath: string
+    --
+    +__construct()
+    +render(view: string, variables: array, layout: string): string
+    +renderPartial(partial: string, variables: array): string
+    -renderView(view: string, variables: array): string
+    -renderFile(file: string, variables: array): string
+  }
+}
+
+package "MVC - Models / ORM" #LightCoral {
+  class "ActiveRecord::Base" {
+    #STATIC connection: Connection
+    #attributes: array
+    #changes: array
+    #persisted: bool
+    #errors: array
+    #STATIC hasMany: array
+    #STATIC belongsTo: array
+    #STATIC hasOne: array
+    #STATIC validations: array
+    #STATIC callbacks: array
+    --
+    +__construct(attributes: array)
+    +fill(attributes: array): void
+    +__get(name: string): mixed
+    +__set(name: string, value: mixed): void
+    #setAttribute(name: string, value: mixed): void
+    +STATIC find(id: mixed): Base
+    +STATIC findBy(conditions: array): Base
+    +STATIC where(conditions: array): Query
+    +STATIC all(): array
+    +STATIC first(): Base
+    +STATIC last(): Base
+    +STATIC create(attributes: array): Base
+    +save(): bool
+    +update(attributes: array): bool
+    +destroy(): bool
+    +valid(): bool
+    +STATIC tableName(): string
+    +STATIC getConnection(): Connection
+    +STATIC setConnection(connection: Connection): void
+    +STATIC instantiate(row: array): Base
+  }
+
+  class "ActiveRecord::Query" {
+    -modelClass: string
+    -conditions: array
+    -orderBy: array
+    -limit: int
+    -offset: int
+    -includes: array
+    -joins: array
+    --
+    +__construct(modelClass: string)
+    +where(conditions: mixed): Query
+    +orderBy(column: string, direction: string): Query
+    +limit(limit: int): Query
+    +offset(offset: int): Query
+    +includes(associations: string): Query
+    +joins(table: string, condition: string): Query
+    +leftJoins(table: string, condition: string): Query
+    +get(): array
+    +first(): Base
+    +last(): Base
+    +count(): int
+    +exists(): bool
+    +pluck(column: string): array
+    +update(attributes: array): int
+    +delete(): int
+    -buildSql(): string
+    -buildWhereClause(): string
+    -buildParams(): array
+    -loadIncludes(records: array): void
+    -getTableName(): string
+    -getConnection(): Connection
+  }
+
+  class "ActiveRecord::Connection" {
+    -pdo: PDO
+    -config: array
+    --
+    +__construct()
+    -loadConfig(): void
+    -connect(): void
+    +query(sql: string, params: array): PDOStatement
+    +execute(sql: string, params: array): bool
+    +lastInsertId(): string
+    +beginTransaction(): bool
+    +commit(): bool
+    +rollback(): bool
+    +getPdo(): PDO
+  }
+
+  class "ActiveRecord::Migration" {
+    #connection: Connection
+    --
+    +up(): void
+    +down(): void
+    #createTable(name: string, callback: callable): void
+    #dropTable(name: string): void
+    #addColumn(table: string, column: string, type: string, options: array): void
+    #removeColumn(table: string, column: string): void
+    #addIndex(table: string, columns: array, options: array): void
+    #removeIndex(table: string, name: string): void
+  }
+
+  class "ActiveRecord::Migrator" {
+    -connection: Connection
+    -migrationsPath: string
+    --
+    +__construct(connection: Connection)
+    +migrate(): void
+    +rollback(steps: int): void
+    +status(): array
+    -getMigrationFiles(): array
+    -getExecutedMigrations(): array
+    -runMigration(file: string): void
+    -recordMigration(version: string): void
+    -removeMigration(version: string): void
+  }
+
+  class Post {
+    +title: string
+    +content: string
+    +author: string
+    +published_at: datetime
+    --
+    +comments(): array
+  }
+
+  class Comment {
+    +post_id: int
+    +author: string
+    +content: string
+    --
+    +post(): Post
+  }
+}
+
+package "Generators" #Lavender {
+  ABSTRACT class Generator {
+    #name: string
+    #options: array
+    #rootPath: string
+    --
+    +__construct(name: string, options: array)
+    +{abstract}generate(): void
+    #createFile(path: string, content: string): void
+    #appendToFile(path: string, content: string): void
+    #camelCase(str: string): string
+    #snakeCase(str: string): string
+    #pluralize(word: string): string
+    #singularize(word: string): string
+  }
+
+  class AppGenerator {
+    +generate(): void
+    -createDirectoryStructure(): void
+    -createConfigFiles(): void
+    -createApplicationFiles(): void
+  }
+
+  class ControllerGenerator {
+    +generate(): void
+    -generateController(): string
+    -generateViews(): void
+  }
+
+  class ModelGenerator {
+    +generate(): void
+    -generateModel(): string
+    -generateMigration(): void
+  }
+
+  class ScaffoldGenerator {
+    +generate(): void
+    -generateAll(): void
+  }
+}
+
+package "CLI" #LightGray {
+  class "tracks (CLI)" {
+    +new(name: string): void
+    +generate(type: string, name: string): void
+    +server(port: int): void
+    +console(): void
+    +db:migrate(): void
+    +db:rollback(steps: int): void
+    +db:create(): void
+    +db:drop(): void
+    +routes(): void
+  }
+}
+
+' Relationships
+Application *-- Router : contains
+Application ..> "ActionController::Base" : dispatches to
+
+Router ..> Application : used by
+
+"ActionController::Base" *-- "ActionView::Renderer" : uses
+"ActionController::Base" <|-- PostsController : extends
+"ActionController::Base" <|-- CommentsController : extends
+"ActionController::Base" <|-- HomeController : extends
+
+"ActiveRecord::Base" *-- "ActiveRecord::Connection" : uses
+"ActiveRecord::Base" ..> "ActiveRecord::Query" : creates
+"ActiveRecord::Base" <|-- Post : extends
+"ActiveRecord::Base" <|-- Comment : extends
+
+"ActiveRecord::Query" --> "ActiveRecord::Connection" : uses
+"ActiveRecord::Migration" --> "ActiveRecord::Connection" : uses
+"ActiveRecord::Migrator" --> "ActiveRecord::Connection" : uses
+"ActiveRecord::Migrator" ..> "ActiveRecord::Migration" : runs
+
+Post "1" *-- "0..*" Comment : has many
+Comment "0..*" --* "1" Post : belongs to
+
+Generator <|-- AppGenerator : extends
+Generator <|-- ControllerGenerator : extends
+Generator <|-- ModelGenerator : extends
+Generator <|-- ScaffoldGenerator : extends
+
+ScaffoldGenerator ..> ModelGenerator : uses
+ScaffoldGenerator ..> ControllerGenerator : uses
+
+"tracks (CLI)" ..> AppGenerator : uses
+"tracks (CLI)" ..> ControllerGenerator : uses
+"tracks (CLI)" ..> ModelGenerator : uses
+"tracks (CLI)" ..> ScaffoldGenerator : uses
+"tracks (CLI)" ..> "ActiveRecord::Migrator" : uses
+"tracks (CLI)" ..> Router : displays routes
+
+note top of Application
+  Singleton pattern implementation
+  Entry point for web requests
+  Manages configuration and routing
+end note
+
+note right of Router
+  RESTful routing implementation
+  Supports resources, namespaces, and scopes
+  Pattern matching for URL to controller mapping
+end note
+
+note bottom of "ActiveRecord::Base"
+  Active Record pattern implementation
+  Provides ORM functionality
+  Handles database persistence
+  Supports associations and validations
+end note
+
+note left of "ActionView::Renderer"
+  Template rendering engine
+  Supports layouts and partials
+  PHP-based templating
+end note
+
+@enduml
